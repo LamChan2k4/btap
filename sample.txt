@@ -1,5 +1,65 @@
-1979	23	23	2	43	24	25	26	26	26	26	25	26	25
-1980	26	27	28	28	28	30	31	31	31	30	30	30	29
-1981	31	32	32	32	33	34	35	36	36	34	34	34	34
-1984	39	38	39	39	39	41	42	43	40	39	38	38	40
-1985	38	39	39	39	39	41	41	41	00	40	39	39	45
+import java.io.IOException;
+import java.util.StringTokenizer;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Reducer;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+
+public class FilterValues {
+
+  public static class ValueMapper
+       extends Mapper<Object, Text, Text, IntWritable>{
+
+    private Text keyText = new Text("Value");
+    private IntWritable valueWritable = new IntWritable();
+
+    public void map(Object key, Text value, Context context
+                    ) throws IOException, InterruptedException {
+      StringTokenizer itr = new StringTokenizer(value.toString());
+      while (itr.hasMoreTokens()) {
+        try {
+          int number = Integer.parseInt(itr.nextToken());
+          if (number > 30) {
+            valueWritable.set(number);
+            context.write(keyText, valueWritable);
+          }
+        } catch (NumberFormatException e) {
+          // Handle the case where the token is not a valid integer
+        }
+      }
+    }
+  }
+
+  public static class IntSumReducer
+       extends Reducer<Text, IntWritable, Text, IntWritable> {
+    private IntWritable result = new IntWritable();
+
+    public void reduce(Text key, Iterable<IntWritable> values,
+                       Context context
+                       ) throws IOException, InterruptedException {
+      for (IntWritable val : values) {
+        context.write(key, val); // Output each value greater than 30
+      }
+    }
+  }
+
+  public static void main(String[] args) throws Exception {
+    Configuration conf = new Configuration();
+    Job job = Job.getInstance(conf, "filter values greater than 30");
+    job.setJarByClass(FilterValues.class);
+    job.setMapperClass(ValueMapper.class);
+    job.setCombinerClass(IntSumReducer.class);
+    job.setReducerClass(IntSumReducer.class);
+    job.setOutputKeyClass(Text.class);
+    job.setOutputValueClass(IntWritable.class);
+    FileInputFormat.addInputPath(job, new Path(args[0]));
+    FileOutputFormat.setOutputPath(job, new Path(args[1]));
+    System.exit(job.waitForCompletion(true) ? 0 : 1);
+  }
+}
